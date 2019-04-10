@@ -1,7 +1,10 @@
 import argparse
 from utils import *
 from scipy.interpolate import splprep, splev
+import time
+import warnings
 
+warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--file', type=str)
@@ -68,7 +71,7 @@ def get_middle_line(img):
     out = np.zeros((h, w), dtype=np.uint8)
 
     _, contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    print(f"Found {len(contours)} contours")
+    # print(f"Found {len(contours)} contours")
 
     cnt_l, cnt_r = separate_contours(contours)
 
@@ -97,8 +100,55 @@ def get_middle_line(img):
 
     return out
 
+def on_video():
+    capture = cv2.VideoCapture(args.file)
+    assert capture.isOpened()
 
-def main():
+    fps = capture.get(cv2.CAP_PROP_FPS)
+    __plot = None
+
+    count = 0
+
+    while capture.isOpened():
+        ret, img = capture.read()
+        count += 1
+
+        if ret and count % 5 != 1:
+            continue
+
+        sf = 4.8
+        h, w, c = img.shape
+        img = cv2.resize(img, (int(h / sf), int(w / sf)))
+
+        # hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(img, lowerb=np.array([150, 150, 150]), upperb=np.array([255, 255, 255]))
+        # show(mask)
+
+        mask = cv2.GaussianBlur(mask, ksize=(5, 5), sigmaX=2)
+        edges = cv2.Canny(mask, threshold1=80, threshold2=120)
+        edges = morph_close(edges, num_iter=1)
+        edges = np.divide(edges, 255).astype(np.uint8)
+        # show(edges)
+
+        mid_line = get_middle_line(edges)
+        ps = np.argwhere(mid_line == 1)
+        for (x, y) in ps:
+            cv2.circle(img, (y, x), 1, (0, 255, 0), thickness=-1)
+
+        # play
+        b = img[:, :, 0]
+        g = img[:, :, 1]
+        r = img[:, :, 2]
+        img = np.dstack((r, g, b))
+        if __plot is None:
+            __plot = plt.imshow(img)
+        else:
+            __plot.set_data(img)
+        plt.pause(1/fps)
+        plt.draw()
+
+
+def on_image(img=None):
     img = open_img(args.file, gray=False)
     h, w, c = img.shape
 
@@ -123,6 +173,13 @@ def main():
     # show(img, from_bgr=True)
     name = args.file.split('/')[-1].split('.')[0]
     save_img(img, name=f'../out/out-{name}.png', from_bgr=True)
+
+def main():
+    if 'jpg' in args.file:
+        on_image()
+    elif 'mp4' in args.file:
+        on_video()
+
 
 
 if __name__ == '__main__':
