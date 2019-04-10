@@ -9,6 +9,7 @@ warnings.filterwarnings("ignore")
 parser = argparse.ArgumentParser()
 parser.add_argument('--file', type=str)
 parser.add_argument('--interp', type=int, default=20)
+parser.add_argument('--save', action='store_true')
 args = parser.parse_args()
 
 
@@ -51,11 +52,11 @@ def separate_contours(contours):
     idx_left = 0 if w0s < w1s else 1
     idx_right = 1 - idx_left
 
-    # cnt_l = np.transpose(contours[idx_left], (0, 2, 1)).squeeze()  # size = N x 2
-    # cnt_r = np.transpose(contours[idx_right], (0, 2, 1)).squeeze()  # size = N x 2
+    cnt_l = np.transpose(contours[idx_left], (0, 2, 1)).squeeze()  # size = N x 2
+    cnt_r = np.transpose(contours[idx_right], (0, 2, 1)).squeeze()  # size = N x 2
 
-    cnt_l = smooth_contour(contours[idx_left], num=args.interp)
-    cnt_r = smooth_contour(contours[idx_right], num=args.interp)
+    # cnt_l = smooth_contour(contours[idx_left], num=args.interp)
+    # cnt_r = smooth_contour(contours[idx_right], num=args.interp)
 
     return cnt_l, cnt_r
 
@@ -100,6 +101,7 @@ def get_middle_line(img):
 
     return out
 
+
 def on_video():
     capture = cv2.VideoCapture(args.file)
     assert capture.isOpened()
@@ -113,10 +115,13 @@ def on_video():
         ret, img = capture.read()
         count += 1
 
-        if ret and count % 5 != 1:
-            continue
+        if count == 180:
+            return
 
-        sf = 4.8
+        # if ret and count % 2 != 1:
+        #     continue
+
+        sf = 4
         h, w, c = img.shape
         img = cv2.resize(img, (int(h / sf), int(w / sf)))
 
@@ -125,7 +130,7 @@ def on_video():
         # show(mask)
 
         mask = cv2.GaussianBlur(mask, ksize=(5, 5), sigmaX=2)
-        edges = cv2.Canny(mask, threshold1=80, threshold2=120)
+        edges = cv2.Canny(mask, threshold1=10, threshold2=30)
         edges = morph_close(edges, num_iter=1)
         edges = np.divide(edges, 255).astype(np.uint8)
         # show(edges)
@@ -134,6 +139,10 @@ def on_video():
         ps = np.argwhere(mid_line == 1)
         for (x, y) in ps:
             cv2.circle(img, (y, x), 1, (0, 255, 0), thickness=-1)
+
+        cv2.imshow('out', img)
+        cv2.waitKey(1)
+        continue
 
         # play
         b = img[:, :, 0]
@@ -144,7 +153,7 @@ def on_video():
             __plot = plt.imshow(img)
         else:
             __plot.set_data(img)
-        plt.pause(1/fps)
+        plt.pause(1 / fps)
         plt.draw()
 
 
@@ -152,7 +161,7 @@ def on_image(img=None):
     img = open_img(args.file, gray=False)
     h, w, c = img.shape
 
-    sf = 6.3 # scale factor: scale original image to 640x480
+    sf = 6.3  # scale factor: scale original image to 640x480
     img = cv2.resize(img, (int(h / sf), int(w / sf)))
 
     # hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -172,14 +181,17 @@ def on_image(img=None):
 
     # show(img, from_bgr=True)
     name = args.file.split('/')[-1].split('.')[0]
-    save_img(img, name=f'../out/out-{name}.png', from_bgr=True)
+    if args.save:
+        save_img(img, name=f'../out/out-{name}.png', from_bgr=True)
+    else:
+        show(img, from_bgr=True)
+
 
 def main():
     if 'jpg' in args.file:
         on_image()
     elif 'mp4' in args.file:
         on_video()
-
 
 
 if __name__ == '__main__':
