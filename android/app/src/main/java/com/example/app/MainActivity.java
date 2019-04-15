@@ -24,6 +24,7 @@ import org.opencv.core.Core;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
@@ -43,9 +44,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
     };
 
-    private Mat matInput = null;
-    private Mat matGray = null;
-    private Mat matOutput = null;
+    private Mat matImg = null;
     private Mat matRot90 = null;
 
     /**
@@ -62,11 +61,12 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
         javaCameraView = findViewById(R.id.java_camera_view);
         javaCameraView.setVisibility(SurfaceView.VISIBLE);
         javaCameraView.setCvCameraViewListener(this);
-
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     @Override
@@ -99,30 +99,17 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public void onCameraViewStarted(int width, int height) {
-        this.matInput = new Mat(height, width, CvType.CV_8UC4);
-        this.matGray = new Mat(height, width, CvType.CV_8UC1);
-        this.matOutput = new Mat(height, width, CvType.CV_8UC1);
-
+        // 1056(w) x 704(h)
+        this.matImg = new Mat(height, width, CvType.CV_8UC3);
         this.matRot90 = Imgproc.getRotationMatrix2D(new Point(height / 2.0F, width / 2.0F), -90, 1);
     }
 
     @Override
     public void onCameraViewStopped() {
-        if (this.matInput != null)
-            this.matInput.release();
+        if (this.matImg != null)
+            this.matImg.release();
     }
 
-
-    private Mat doCanny(Mat matRawFrame) {
-        Imgproc.cvtColor(matRawFrame, this.matGray, Imgproc.COLOR_RGBA2GRAY);
-        Mat mEdges = new Mat(this.matGray.size(), CvType.CV_8UC1);
-        Imgproc.Canny(this.matGray, mEdges, 50.0, 100.0);
-
-        // fix orientation
-        Imgproc.warpAffine(mEdges, this.matOutput, this.matRot90, mEdges.size());
-
-        return this.matOutput;
-    }
 
     private Mat morphClose(Mat img, int numIter) {
         Mat strel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(5, 5));
@@ -136,51 +123,63 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     }
 
     private Pair<MatOfPoint, MatOfPoint> separateContours(List<MatOfPoint> contours) {
+        /**
+         * MatOfPoint M size = 1(width/cols) x N(height/rows)
+         * M[0, i] = double[2] = Point(x, y)
+         */
+
         if (contours.size() < 2)
             return null;
 
+        Collections.sort(contours, new Comparator<MatOfPoint>() {
+            @Override
+            public int compare(MatOfPoint o1, MatOfPoint o2) {
+                return -o1.rows() + o2.rows();
+            }
+        });
 
-        // TODO: implement
-        return new Pair<>(contours.get(0), contours.get(1));
+        Pair<MatOfPoint, MatOfPoint> pair = new Pair<>(contours.get(0), contours.get(1));
+
+        // TODO: use median / mean to find left / right
+
+        return pair;
     }
 
-    private List<Point> getMiddleLine(Mat img) {
-//        Mat outLeft = new Mat(img.size(), CvType.CV_8UC1);
-//        Mat outRight = new Mat(img.size(), CvType.CV_8UC1);
-        Mat out = new Mat(img.size(), CvType.CV_8UC1);
+    private List<Point> getMiddleLane(Mat matEdgeBin) {
+        /**
+         * matEdgeBin either 0/1
+         */
+
+        // TODO: don't draw contours ..
+        Mat outLeft = new Mat(matEdgeBin.size(), CvType.CV_8UC1);
+        Mat outRight = new Mat(matEdgeBin.size(), CvType.CV_8UC1);
+        Mat out = new Mat(matEdgeBin.size(), CvType.CV_8UC1);
 
         List<MatOfPoint> contours = new ArrayList<>();
-        Imgproc.findContours(img, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+        Imgproc.findContours(matEdgeBin, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
-        Pair<MatOfPoint, MatOfPoint> cnts = separateContours(contours);
-        if (cnts == null)
+        Pair<MatOfPoint, MatOfPoint> contourPair = separateContours(contours);
+        if (contourPair == null)
             return new ArrayList<>();
 
-//        Imgproc.drawContours(outLeft, Arrays.asList(cnts.first), 0, new Scalar(1), 1);
-//        Imgproc.drawContours(outRight, Arrays.asList(cnts.second), 0, new Scalar(1), 1);
+        Imgproc.drawContours(outLeft, Arrays.asList(contourPair.first), 0, new Scalar(1), 1);
+        Imgproc.drawContours(outRight, Arrays.asList(contourPair.second), 0, new Scalar(1), 1);
 
-//        for (int i = 0; i < img.height(); i++) {
-//            int ll = -1, rr = -1;
-//
-//            // FIXME - optimize
-//            for (int j = 0; j < img.width(); j++) {
-//                double[] c_ll = outLeft.get(i, j);
-//                double[] c_rr = outLeft.get(i, j);
-//                if (c_ll[0] > 0)
-//                    ll = j;
-//                if (c_rr[0] > 0)
-//                    rr = j;
-//            }
-//
-//            if (ll > -1 && rr > -1) {
-//                double[] data = new double[]{1};
-//                out.put(i, ll + (rr - ll) / 2, data);
-//            }
-//        }
+        for (int i = 0; i < matEdgeBin.rows(); i++) {
+            Mat nonZeroLeft = new Mat();
+            Mat nonZeroRight = new Mat();
+            Core.findNonZero(outLeft.row(i), nonZeroLeft);
+            Core.findNonZero(outRight.row(i), nonZeroRight);
 
-//        outLeft.release();
-//        outRight.release();
-//        out = morphClose(out, 1);
+//            double[] nzLeft = nonZeroLeft.get(nonZeroLeft.rows() - 1, nonZeroLeft.cols() - 1);
+//            double[] nzRight = nonZeroRight.get(nonZeroRight.rows() - 1, nonZeroRight.cols() - 1);
+//
+//            Log.i("iiiaiiaia", String.valueOf(nzLeft.length) + " ;;; " + String.valueOf(nzRight.length));
+        }
+
+        outLeft.release();
+        outRight.release();
+        morphClose(out, 1);
 
         List<Point> points = new ArrayList<>();
 
@@ -196,39 +195,51 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         return points;
     }
 
+    private String matToString(Mat mat) {
+        StringBuilder s = new StringBuilder();
+        for (int x = 0; x < mat.height(); x++) {
+            for (int y = 0; y < mat.width(); y++) {
+                if (mat.get(x, y)[0] > 0)
+                    s.append(String.valueOf(mat.get(x, y)[0])).append(";");
+            }
+            s.append("\n");
+        }
+        return s.toString();
+    }
+
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
 
         // TODO: USE HSL color space
+        // TODO: use separate thread for processing
+
         // fix orientation
-        Imgproc.warpAffine(inputFrame.rgba(), this.matInput, this.matRot90, this.matInput.size());
+        Imgproc.warpAffine(inputFrame.rgba(), this.matImg, this.matRot90, this.matImg.size());
 
         // get input image as RGB
-        Imgproc.cvtColor(this.matInput, this.matInput, Imgproc.COLOR_RGBA2RGB);
+        Imgproc.cvtColor(this.matImg, this.matImg, Imgproc.COLOR_RGBA2RGB);
 
         // thresholding for white
-//        Imgproc.cvtColor(this.matInput, this.matInput, Imgproc.COLOR_BGR2HSV);
-        Mat mask = new Mat(this.matInput.size(), CvType.CV_8UC1);
-        Core.inRange(this.matInput, new Scalar(120, 120, 120), new Scalar(255, 255, 255), mask);
+        Mat mask = new Mat(this.matImg.size(), CvType.CV_8UC1);
+        Core.inRange(this.matImg, new Scalar(120, 120, 120), new Scalar(255, 255, 255), mask);
 
         // Canny
         Imgproc.GaussianBlur(mask, mask, new Size(5, 5), 2);
-        Mat edges = new Mat(mask.size(), CvType.CV_8UC1);
-        Imgproc.Canny(mask, edges, this.thr1, this.thr2);
+        Mat matEdgeBin = new Mat(mask.size(), CvType.CV_8UC1);
+        Imgproc.Canny(mask, matEdgeBin, this.thr1, this.thr2);
         mask.release();
-        edges = morphClose(edges, 1);
-//        Core.divide(edges, new Scalar(255.0), edges);
+        morphClose(matEdgeBin, 1);
+        Core.divide(matEdgeBin, new Scalar(255.0), matEdgeBin);
 
-//        List<Point> points = getMiddleLine(edges);
-//
-//        this.matOutput = this.matInput;
-//
-//        for (Point p : points) {
-//            Imgproc.circle(this.matOutput, p, 1, new Scalar(0, 255, 0), -1);
-//        }
+        // get and draw points from the middle lane
+        List<Point> points = getMiddleLane(matEdgeBin);
+        for (Point p : points) {
+            Imgproc.circle(this.matImg, p, 1, new Scalar(0, 255, 0), -1);
+        }
 
-        return edges;
+        Core.multiply(matEdgeBin, new Scalar(255.0), this.matImg);
+        return this.matImg;
     }
 }
 
