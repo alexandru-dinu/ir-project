@@ -47,14 +47,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     private Mat matImg = null;
     private Mat matRot90 = null;
 
-    /**
-     * PARAMS
-     */
-    private Scalar lowerBound = new Scalar(120, 120, 120);
-    private Scalar upperBound = new Scalar(255, 255, 255);
-    private int thr1 = 80;
-    private int thr2 = 120;
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -134,7 +126,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Collections.sort(contours, new Comparator<MatOfPoint>() {
             @Override
             public int compare(MatOfPoint o1, MatOfPoint o2) {
-                return -o1.rows() + o2.rows();
+                return o2.rows() - o1.rows();
             }
         });
 
@@ -146,50 +138,20 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     }
 
     private List<Point> getMiddleLane(Mat matEdgeBin) {
-        /**
-         * matEdgeBin either 0/1
-         */
+        // TODO: don't draw contours, directly construct `points` from contourPair
 
-        // TODO: don't draw contours ..
-        Mat outLeft = new Mat(matEdgeBin.size(), CvType.CV_8UC1);
-        Mat outRight = new Mat(matEdgeBin.size(), CvType.CV_8UC1);
-        Mat out = new Mat(matEdgeBin.size(), CvType.CV_8UC1);
+        Mat matOut = new Mat(matEdgeBin.size(), CvType.CV_8UC1);
+        List<Point> points = new ArrayList<>();
 
         List<MatOfPoint> contours = new ArrayList<>();
         Imgproc.findContours(matEdgeBin, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
+        // get left/right contours
         Pair<MatOfPoint, MatOfPoint> contourPair = separateContours(contours);
+
+        // no sufficient contours
         if (contourPair == null)
             return new ArrayList<>();
-
-        Imgproc.drawContours(outLeft, Arrays.asList(contourPair.first), 0, new Scalar(1), 1);
-        Imgproc.drawContours(outRight, Arrays.asList(contourPair.second), 0, new Scalar(1), 1);
-
-        for (int i = 0; i < matEdgeBin.rows(); i++) {
-            Mat nonZeroLeft = new Mat();
-            Mat nonZeroRight = new Mat();
-            Core.findNonZero(outLeft.row(i), nonZeroLeft);
-            Core.findNonZero(outRight.row(i), nonZeroRight);
-
-//            double[] nzLeft = nonZeroLeft.get(nonZeroLeft.rows() - 1, nonZeroLeft.cols() - 1);
-//            double[] nzRight = nonZeroRight.get(nonZeroRight.rows() - 1, nonZeroRight.cols() - 1);
-//
-//            Log.i("iiiaiiaia", String.valueOf(nzLeft.length) + " ;;; " + String.valueOf(nzRight.length));
-        }
-
-        outLeft.release();
-        outRight.release();
-        morphClose(out, 1);
-
-        List<Point> points = new ArrayList<>();
-
-        for (int i = 0; i < out.height(); i++) {
-            for (int j = 0; j < out.width(); j++) {
-                if (out.get(i, j)[0] > 0) {
-                    points.add(new Point(i, j));
-                }
-            }
-        }
 
 
         return points;
@@ -214,6 +176,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         // TODO: USE HSL color space
         // TODO: use separate thread for processing
 
+        String mode = "rgb";
+
         // fix orientation
         Imgproc.warpAffine(inputFrame.rgba(), this.matImg, this.matRot90, this.matImg.size());
 
@@ -222,23 +186,65 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         // thresholding for white
         Mat mask = new Mat(this.matImg.size(), CvType.CV_8UC1);
-        Core.inRange(this.matImg, new Scalar(120, 120, 120), new Scalar(255, 255, 255), mask);
+
+        if (mode == "hsv") {
+            Imgproc.cvtColor(this.matImg, this.matImg, Imgproc.COLOR_RGB2HSV);
+            Core.inRange(this.matImg, new Scalar(0, 0, 200), new Scalar(360, 10, 255), mask);
+        }
+        if (mode == "rgb") {
+            Core.inRange(this.matImg, new Scalar(150, 150, 150), new Scalar(255, 255, 255), mask);
+        }
+        if (mode == "gray") {
+            Mat matGray = new Mat(this.matImg.size(), CvType.CV_8UC1);
+            Imgproc.cvtColor(this.matImg, matGray, Imgproc.COLOR_RGB2GRAY);
+            Core.inRange(matGray, new Scalar(200), new Scalar(255), mask);
+            matGray.release();
+        }
 
         // Canny
         Imgproc.GaussianBlur(mask, mask, new Size(5, 5), 2);
-        Mat matEdgeBin = new Mat(mask.size(), CvType.CV_8UC1);
-        Imgproc.Canny(mask, matEdgeBin, this.thr1, this.thr2);
-        mask.release();
-        morphClose(matEdgeBin, 1);
-        Core.divide(matEdgeBin, new Scalar(255.0), matEdgeBin);
+        morphClose(mask, 2);
 
-        // get and draw points from the middle lane
-        List<Point> points = getMiddleLane(matEdgeBin);
-        for (Point p : points) {
-            Imgproc.circle(this.matImg, p, 1, new Scalar(0, 255, 0), -1);
+        Mat matEdgeBin = new Mat(mask.size(), CvType.CV_8UC1);
+        Imgproc.Canny(mask, matEdgeBin, 140, 160);
+
+        mask.release();
+
+        morphClose(matEdgeBin, 1);
+//        Core.divide(matEdgeBin, new Scalar(255.0), matEdgeBin);
+
+        // HOUGH
+        Mat matLines = new Mat(this.matImg.size(), CvType.CV_8UC1);
+
+        Imgproc.HoughLines(matEdgeBin, matLines, 4, Math.PI / 180.0, 250);
+
+        for (int i = 0; i < matLines.rows(); i++) {
+            double[] data = matLines.get(i, 0);
+
+            if (data == null || data.length < 2)
+                continue;
+
+            double rho1 = data[0];
+            double theta1 = data[1];
+            double cosTheta = Math.cos(theta1);
+            double sinTheta = Math.sin(theta1);
+
+            Log.i("HOUGH theta", "lineIdx[" + i + "] theta:" + theta1 * 180.0 / Math.PI);
+
+            // theta thresholding
+//            if (theta1 < -Math.PI / 3 || theta1 > Math.PI / 3)
+//                continue;
+
+
+            double x0 = cosTheta * rho1;
+            double y0 = sinTheta * rho1;
+            Point pt1 = new Point(x0 + 5000 * (-sinTheta), y0 + 5000 * cosTheta);
+            Point pt2 = new Point(x0 - 5000 * (-sinTheta), y0 - 5000 * cosTheta);
+
+            Imgproc.line(this.matImg, pt1, pt2, new Scalar(0, 255, 0), 5);
         }
 
-        Core.multiply(matEdgeBin, new Scalar(255.0), this.matImg);
+//        return matEdgeBin;
         return this.matImg;
     }
 }
