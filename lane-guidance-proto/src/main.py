@@ -13,12 +13,29 @@ parser.add_argument('--save', action='store_true')
 args = parser.parse_args()
 
 
+def save_or_show(img, suffix=""):
+    if args.save:
+        name = args.file.split('/')[-1].split('.')[0]
+        save_img(img, name=f'../out/out-{name}{suffix}.png', from_bgr=True)
+    else:
+        show(img, from_bgr=True)
+
+
 def morph_close(img, num_iter=1):
     strel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
     for _ in range(num_iter):
         img = cv2.dilate(img, strel, iterations=1)
         img = cv2.erode(img, strel, iterations=1)
+
+    return img
+
+def morph_open(img, num_iter=1):
+    strel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+
+    for _ in range(num_iter):
+        img = cv2.erode(img, strel, iterations=1)
+        img = cv2.dilate(img, strel, iterations=1)
 
     return img
 
@@ -157,6 +174,34 @@ def on_video():
         plt.draw()
 
 
+def with_hough(img, edges):
+    lines = cv2.HoughLines(edges, rho=1, theta=np.pi/180.0, threshold=70)
+
+    thr = 30.0
+
+    for i, line in enumerate(lines):
+        rho, theta = line[0]
+
+        if (thr/180) * np.pi < theta < ((180.0-thr)/180) * np.pi:
+            print(f"[{i}]SKIP theta: {theta * 180.0 / np.pi}")
+            continue
+
+        print(f"[{i}]OK theta: {theta * 180.0 / np.pi}")
+
+        a = np.cos(theta)
+        b = np.sin(theta)
+        x0 = a*rho
+        y0 = b*rho
+        x1 = int(x0 + 1000*(-b))
+        y1 = int(y0 + 1000*(a))
+        x2 = int(x0 - 1000*(-b))
+        y2 = int(y0 - 1000*(a))
+
+        cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
+
+    save_or_show(img, suffix='-hough')
+
+
 def on_image(img=None):
     img = open_img(args.file, gray=False)
     h, w, c = img.shape
@@ -171,6 +216,12 @@ def on_image(img=None):
     mask = cv2.GaussianBlur(mask, ksize=(5, 5), sigmaX=2)
     edges = cv2.Canny(mask, threshold1=80, threshold2=120)
     edges = morph_close(edges, num_iter=1)
+    # show(edges); return
+
+    if True:
+        with_hough(img, edges)
+        return
+
     edges = np.divide(edges, 255).astype(np.uint8)
     # show(edges)
 
@@ -180,11 +231,7 @@ def on_image(img=None):
         cv2.circle(img, (y, x), 1, (0, 255, 0), thickness=-1)
 
     # show(img, from_bgr=True)
-    name = args.file.split('/')[-1].split('.')[0]
-    if args.save:
-        save_img(img, name=f'../out/out-{name}.png', from_bgr=True)
-    else:
-        show(img, from_bgr=True)
+    save_or_show(img)
 
 
 def main():
