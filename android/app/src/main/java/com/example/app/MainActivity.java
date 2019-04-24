@@ -22,10 +22,11 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.core.Core;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
 
@@ -46,6 +47,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     private Mat matImg = null;
     private Mat matRot90 = null;
+    private Queue<Pair<Point, Point>> leftLines = new LinkedList<>();
+    private Queue<Pair<Point, Point>> rightLines = new LinkedList<>();
+    private int windowSize = 7;
 
 
     @Override
@@ -114,49 +118,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         return img;
     }
 
-    private Pair<MatOfPoint, MatOfPoint> separateContours(List<MatOfPoint> contours) {
-        /**
-         * MatOfPoint M size = 1(width/cols) x N(height/rows)
-         * M[0, i] = double[2] = Point(x, y)
-         */
-
-        if (contours.size() < 2)
-            return null;
-
-        Collections.sort(contours, new Comparator<MatOfPoint>() {
-            @Override
-            public int compare(MatOfPoint o1, MatOfPoint o2) {
-                return o2.rows() - o1.rows();
-            }
-        });
-
-        Pair<MatOfPoint, MatOfPoint> pair = new Pair<>(contours.get(0), contours.get(1));
-
-        // TODO: use median / mean to find left / right
-
-        return pair;
-    }
-
-    private List<Point> getMiddleLane(Mat matEdgeBin) {
-        // TODO: don't draw contours, directly construct `points` from contourPair
-
-        Mat matOut = new Mat(matEdgeBin.size(), CvType.CV_8UC1);
-        List<Point> points = new ArrayList<>();
-
-        List<MatOfPoint> contours = new ArrayList<>();
-        Imgproc.findContours(matEdgeBin, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
-
-        // get left/right contours
-        Pair<MatOfPoint, MatOfPoint> contourPair = separateContours(contours);
-
-        // no sufficient contours
-        if (contourPair == null)
-            return new ArrayList<>();
-
-
-        return points;
-    }
-
     private String matToString(Mat mat) {
         StringBuilder s = new StringBuilder();
         for (int x = 0; x < mat.height(); x++) {
@@ -169,12 +130,83 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         return s.toString();
     }
 
+    private Queue<Pair<Point, Point>> windowedAdd(Queue<Pair<Point, Point>> pts, Pair<Point, Point> pt) {
+        if (pts.size() < this.windowSize) {
+            pts.add(pt);
+        }
+
+        if (pts.size() == this.windowSize) {
+            pts.remove();
+            pts.add(pt);
+        }
+
+        return pts;
+    }
+
+    private Pair<Point, Point> averageLine(Queue<Pair<Point, Point>> lines) {
+        double fx = 0.0, fy = 0.0, sx = 0.0, sy = 0.0;
+
+        for (Pair<Point, Point> line : lines) {
+            fx += line.first.x / windowSize;
+            fy += line.first.y / windowSize;
+            sx += line.second.x / windowSize;
+            sy += line.second.y / windowSize;
+        }
+
+        return new Pair<>(new Point(fx, fy), new Point(sx, sy));
+    }
+
+    private Pair<Point, Point> swap(Pair<Point, Point> p) {
+        return new Pair<>(p.second, p.first);
+    }
+
+    private Mat drawLines() {
+        Pair<Point, Point> leftLine = averageLine(this.leftLines);
+        Pair<Point, Point> rightLine = averageLine(this.rightLines);
+        List<Point> midPoints = new ArrayList<>();
+        int numPoints = 100;
+
+        Imgproc.line(this.matImg, leftLine.first, leftLine.second, new Scalar(255, 0, 0), 5);
+        Imgproc.line(this.matImg, rightLine.first, rightLine.second, new Scalar(0, 0, 255), 5);
+
+
+        leftLine = leftLine.first.y > leftLine.second.y ? swap(leftLine) : leftLine;
+        rightLine = rightLine.first.y > rightLine.second.y ? swap(rightLine) : rightLine;
+
+        // middle line
+        for (int i = 0; i < numPoints; i++) {
+            double a = 1.0 * i / (numPoints - 1);
+            double xLeft, yLeft, xRight, yRight;
+
+            xLeft = (1 - a) * leftLine.first.x + a * leftLine.second.x;
+            yLeft = (1 - a) * leftLine.first.y + a * leftLine.second.y;
+            xRight = (1 - a) * rightLine.first.x + a * rightLine.second.x;
+            yRight = (1 - a) * rightLine.first.y + a * rightLine.second.y;
+
+            int x = (int) Math.round(0.5 * (xLeft + xRight));
+            int y = (int) Math.round(0.5 * (yLeft + yRight));
+
+            midPoints.add(new Point(x, y));
+        }
+
+
+        for (Point p : midPoints) {
+            Log.i("POINT", p.toString());
+            Imgproc.circle(this.matImg, p, 5, new Scalar(0, 255, 0), -1);
+        }
+
+
+        return this.matImg;
+    }
+
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
 
         // TODO: USE HSL color space
         // TODO: use separate thread for processing
+
+        int width = inputFrame.gray().width();
 
         String mode = "rgb";
 
@@ -218,6 +250,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         Imgproc.HoughLines(matEdgeBin, matLines, 4, Math.PI / 180.0, 250);
 
+        int d = 30;
+        double f = 0.3;
+
         for (int i = 0; i < matLines.rows(); i++) {
             double[] data = matLines.get(i, 0);
 
@@ -225,27 +260,34 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 continue;
 
             double rho1 = data[0];
-            double theta1 = data[1];
+            double theta1 = data[1]; // 0 -> pi
+            double thetaDeg = 180.0 * theta1 / Math.PI; // 0 -> 180
             double cosTheta = Math.cos(theta1);
             double sinTheta = Math.sin(theta1);
-
-            Log.i("HOUGH theta", "lineIdx[" + i + "] theta:" + theta1 * 180.0 / Math.PI);
-
-            // theta thresholding
-//            if (theta1 < -Math.PI / 3 || theta1 > Math.PI / 3)
-//                continue;
-
-
             double x0 = cosTheta * rho1;
             double y0 = sinTheta * rho1;
-            Point pt1 = new Point(x0 + 5000 * (-sinTheta), y0 + 5000 * cosTheta);
-            Point pt2 = new Point(x0 - 5000 * (-sinTheta), y0 - 5000 * cosTheta);
 
-            Imgproc.line(this.matImg, pt1, pt2, new Scalar(0, 255, 0), 5);
+            // angle thresholding
+            if (d < thetaDeg && thetaDeg < (180 - d))
+                continue;
+
+            // position thresholding
+            if (x0 < f * width || x0 > (1 - f) * width)
+                continue;
+
+//            Log.i("HOUGH theta(deg)", "lineIdx[" + i + "] theta:" + thetaDeg);
+
+            Point pt1 = new Point(x0 + 1000 * (-sinTheta), y0 + 1000 * cosTheta);
+            Point pt2 = new Point(x0 - 1000 * (-sinTheta), y0 - 1000 * cosTheta);
+
+            if (x0 < 0.5 * width)
+                windowedAdd(this.leftLines, new Pair<>(pt1, pt2));
+            else
+                windowedAdd(this.rightLines, new Pair<>(pt1, pt2));
         }
 
 //        return matEdgeBin;
-        return this.matImg;
+        return drawLines();
     }
 }
 
