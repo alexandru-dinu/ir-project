@@ -25,6 +25,7 @@ def show(arr, from_bgr=False, cmap=None):
 
     plt.show()
 
+
 def save_img(arr, name, from_bgr=False):
     if from_bgr:
         b = arr[:, :, 0]
