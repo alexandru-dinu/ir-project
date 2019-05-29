@@ -22,46 +22,92 @@ def morph_open(img, num_iter=1):
     return img
 
 
+def get_center_points_and_weights(w, h, num=6, bottom_to_top=False):
+    m = w // 2
+    p = 0.3
+    spacing = (0.9 - p) * h / (num - 1)
+
+    # top -> bottom
+    weights = np.array([0.3, 0.3, 0.2, 0.2, 0.1, 0.1])
+
+    points = np.concatenate((
+        np.array([[m, int(p * h + i * spacing)] for i in range(num - 1)]),
+        [[m, int(0.9 * h)]]
+    )).astype(np.int32)
+
+    if bottom_to_top:
+        weights = weights[::-1]
+        points = points[::-1]
+
+    return spacing, points, weights
+
+
+def get_left_right_markers(row):
+    left = (row == 255).argmax()
+    right = len(row) - (row[::-1] == 255).argmax()
+
+    return left, right
+
+
+def get_point_on_lane(row, point):
+    px, py = point
+    left, right = row[:px], row[px:]
+
+    ll, lr = get_left_right_markers(left)
+    if ll < lr:
+        return int(0.5 * (ll + lr))
+
+    rl, rr = get_left_right_markers(right)
+    if rl < rr:
+        return int(0.5 * (rl + rr))
+
+    return 0, 0  # TODO
+
+
+def compute_speed_delta(diffs, weights, div_factor=8):
+    x = np.sum(diffs * weights)
+
+    s = np.round(x / div_factor)
+    # s = 1.6 * x / (1 + abs(x))
+
+    return s
+
+
 def region_of_interest(img):
-    """
-    Applies an image mask.
+    assert len(img.shape) == 2
 
-    Only keeps the region of the image defined by the polygon
-    formed from `vertices`. The rest of the image is set to black.
-    """
-    # defining a blank mask to start with
+    h, w = img.shape
+    sx, sy = 0.23, 0.15
+    delta = 200
 
-    vertices = np.array([[160, 50], [320, 50], [479, 639], [0, 639]],
-                        dtype=np.int32)
+    mask = np.zeros(img.shape)
+    fill_color = 255
 
-    mask = np.zeros_like(img)
+    vertices = np.array([
+        [0.5 * (w - delta), sy * h],
+        [0.5 * (w + delta), sy * h],
+        [(1 - sx) * w, h - 1],
+        [sx * w, h - 1],
+    ])
 
-    if len(img.shape) > 2:
-        _, _, c = img.shape
-        ignore_mask_color = (255,) * c
-    else:
-        ignore_mask_color = 255
+    cv2.fillPoly(mask, np.array([vertices], dtype=np.int32), fill_color)
 
-    cv2.fillPoly(mask, [vertices], ignore_mask_color)
-    masked_image = cv2.bitwise_or(img, ~mask)
+    return mask.astype(np.uint8) & img.astype(np.uint8)  # cv2.bitwise_and(mask, img)
 
-    return masked_image, mask
-
-
-def get_middle_lane(mask):
-    h, w = mask.shape
-    lane_mask = np.zeros_like(mask)
-
-    for i in range(50, h):
-        left = 0
-        right = w
-        for j in range(1, w):
-            if mask[i, j - 1] == 0 and mask[i, j] == 255:
-                left = j
-            if mask[i, j - 1] == 255 and mask[i, j] == 0:
-                right = j
-
-        middle = int((left + right) / 2)
-        lane_mask[i, middle] = lane_mask[i, middle - 1] = lane_mask[i, middle + 1] = 255
-
-    return lane_mask
+# def get_middle_lane(mask):
+#     h, w = mask.shape
+#     lane_mask = np.zeros_like(mask)
+#
+#     for i in range(50, h):
+#         left = 0
+#         right = w
+#         for j in range(1, w):
+#             if mask[i, j - 1] == 0 and mask[i, j] == 255:
+#                 left = j
+#             if mask[i, j - 1] == 255 and mask[i, j] == 0:
+#                 right = j
+#
+#         middle = int((left + right) / 2)
+#         lane_mask[i, middle] = lane_mask[i, middle - 1] = lane_mask[i, middle + 1] = 255
+#
+#     return lane_mask

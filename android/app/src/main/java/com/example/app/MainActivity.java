@@ -14,7 +14,6 @@ import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
-import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
@@ -22,8 +21,6 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.core.Core;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
@@ -45,7 +42,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
     };
 
-    private Mat matImg = null;
+    private Mat output_image = null;
     private Mat matRot90 = null;
     private Queue<Pair<Point, Point>> leftLines = new LinkedList<>();
     private Queue<Pair<Point, Point>> rightLines = new LinkedList<>();
@@ -96,14 +93,14 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     @Override
     public void onCameraViewStarted(int width, int height) {
         // 1056(w) x 704(h)
-        this.matImg = new Mat(height, width, CvType.CV_8UC3);
+        this.output_image = new Mat(height, width, CvType.CV_8UC3);
         this.matRot90 = Imgproc.getRotationMatrix2D(new Point(height / 2.0F, width / 2.0F), -90, 1);
     }
 
     @Override
     public void onCameraViewStopped() {
-        if (this.matImg != null)
-            this.matImg.release();
+        if (this.output_image != null)
+            this.output_image.release();
     }
 
 
@@ -143,8 +140,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         List<Point> midPoints = new ArrayList<>();
         int numPoints = 100;
 
-        Imgproc.line(this.matImg, leftLine.first, leftLine.second, new Scalar(255, 0, 0), 5);
-        Imgproc.line(this.matImg, rightLine.first, rightLine.second, new Scalar(0, 0, 255), 5);
+        Imgproc.line(this.output_image, leftLine.first, leftLine.second, new Scalar(255, 0, 0), 5);
+        Imgproc.line(this.output_image, rightLine.first, rightLine.second, new Scalar(0, 0, 255), 5);
 
 
         leftLine = leftLine.first.y > leftLine.second.y ? swap(leftLine) : leftLine;
@@ -169,11 +166,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         for (Point p : midPoints) {
             Log.i("POINT", p.toString());
-            Imgproc.circle(this.matImg, p, 5, new Scalar(0, 255, 0), -1);
+            Imgproc.circle(this.output_image, p, 5, new Scalar(0, 255, 0), -1);
         }
 
 
-        return this.matImg;
+        return this.output_image;
     }
 
 
@@ -188,15 +185,15 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         String mode = "rgb";
 
         // fix orientation
-        Imgproc.warpAffine(inputFrame.rgba(), this.matImg, this.matRot90, this.matImg.size());
+        Imgproc.warpAffine(inputFrame.rgba(), this.output_image, this.matRot90, this.output_image.size());
 
         // get input image as RGB
-        Imgproc.cvtColor(this.matImg, this.matImg, Imgproc.COLOR_RGBA2RGB);
-        // matImg shape = 1056(w) x 704(h)
+        Imgproc.cvtColor(this.output_image, this.output_image, Imgproc.COLOR_RGBA2RGB);
+        // output_image shape = 1056(w) x 704(h)
 
         // 1. white thresholding
-        Mat mask = new Mat(this.matImg.size(), CvType.CV_8UC1);
-        Core.inRange(this.matImg, new Scalar(150, 150, 150), new Scalar(255, 255, 255), mask);
+        Mat mask = new Mat(this.output_image.size(), CvType.CV_8UC1);
+        Core.inRange(this.output_image, new Scalar(150, 150, 150), new Scalar(255, 255, 255), mask);
 
         // 2. remove noise
         Imgproc.GaussianBlur(mask, mask, new Size(5, 5), 2);
@@ -204,36 +201,28 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Utils.morph_open(mask, 3);
 
         // 3. get masked roi
-        Mat masked_roi = Utils.region_of_interest(mask);
-        Core.bitwise_not(masked_roi, masked_roi);
+        Pair<Mat, List<Point>> _x = Utils.region_of_interest(mask);
+        Mat masked_roi = _x.first;
+        List<Point> roi_vertices = _x.second;
 
         // 4. get middle lane
-        Mat middle_lane_mask = SegmentationBased.get_middle_lane(masked_roi);
-        Mat color_mask = new Mat(this.matImg.rows(), this.matImg.cols(), this.matImg.type(), new Scalar(0, 0, 0));
+        Segmentation.draw_middle_lane(masked_roi, roi_vertices, this.output_image);
 
-        // color_mask[masked_roi != 0] = [0, 255, 0]
-        for (int i = 0; i < masked_roi.rows(); i++) {
-            for (int j = 0; j < masked_roi.cols(); j++) {
-                double[] data = masked_roi.get(i, j);
-
-                if ((int) Math.round(data[0]) != 0)
-                    color_mask.put(i, j, new double[]{0, 255, 0});
-            }
-        }
-
-        Core.addWeighted(color_mask, 0.3, this.matImg, 0.7, 0, this.matImg);
-
-        // color_img[middle_lane_mask != 0] = [255, 0, 0]
-        for (int i = 0; i < middle_lane_mask.rows(); i++) {
-            for (int j = 0; j < middle_lane_mask.cols(); j++) {
-                double[] data = middle_lane_mask.get(i, j);
-
-                if ((int) Math.round(data[0]) != 0)
-                    this.matImg.put(i, j, new double[]{255, 0, 0});
-            }
-        }
-
-        return this.matImg;
+//        // color_mask[masked_roi != 0] = [0, 255, 0]
+//        Mat color_mask = new Mat(this.output_image.rows(), this.output_image.cols(), this.output_image.type(), new Scalar(0, 0, 0));
+//        for (int i = 0; i < masked_roi.rows(); i++) {
+//            for (int j = 0; j < masked_roi.cols(); j++) {
+//                double[] data = masked_roi.get(i, j);
+//
+//                if ((int) Math.round(data[0]) != 0)
+//                    color_mask.put(i, j, new double[]{0, 255, 0});
+//            }
+//        }
+//
+//        Core.addWeighted(color_mask, 0.3, this.output_image, 0.7, 0, this.output_image);
+//
+//        return masked_roi;
+        return this.output_image;
     }
 }
 

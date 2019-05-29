@@ -1,5 +1,6 @@
 package com.example.app;
 
+import android.util.Log;
 import android.util.Pair;
 
 import org.opencv.core.Core;
@@ -46,12 +47,22 @@ public class Utils {
         return src;
     }
 
-    public static Mat region_of_interest(Mat src) {
+    public static Pair<Mat, List<Point>> region_of_interest(Mat src) {
+
+        if (src.type() != CvType.CV_8UC1)
+            throw new AssertionError("Invalid src type, must be CV_8UC1");
+
+        int w = src.width();
+        int h = src.height();
+        double sx = 0.2;
+        double sy = 0.15;
+        int delta = 250;
+
         MatOfPoint vertices = new MatOfPoint(
-                new Point(160, 50),
-                new Point(320, 50),
-                new Point(479, 639),
-                new Point(0, 639)
+                new Point(0.5 * (w - delta), sy * h),
+                new Point(0.5 * (w + delta), sy * h),
+                new Point((1 - sx) * w, h - 1),
+                new Point(sx * w, h - 1)
         );
 
         Scalar ignore_mask_color, zero_scalar;
@@ -70,11 +81,9 @@ public class Utils {
 
         Imgproc.fillPoly(mask, new ArrayList<>(Arrays.asList(vertices)), ignore_mask_color);
 
-        Core.bitwise_not(mask, mask);
+        Core.bitwise_and(src, mask, dst);
 
-        Core.bitwise_or(src, mask, dst);
-
-        return dst;
+        return new Pair<>(dst, vertices.toList());
     }
 
     public static void fill_row(Mat mat, int row, int value) {
@@ -94,6 +103,40 @@ public class Utils {
             mat.put(row, i, new int[]{value});
         }
     }
+
+    public static int argmax(int row, int low, int hi, Mat data) {
+        int idx = -1;
+        double max = -1;
+
+        for (int i = low; i < hi; i++) {
+            Log.i("LIM", "" + low + ";" + hi + ";" + i);
+            double[] x = data.get(row, i);
+
+            if (x[0] > max) {
+                idx = i;
+                max = x[0];
+            }
+        }
+
+        return idx;
+    }
+
+    public static int reverse_argmax(int row, int hi, int low, Mat data) {
+        int idx = -1;
+        double max = -1;
+
+        for (int i = hi; i >= low; i--) {
+            double[] x = data.get(row, i);
+
+            if (x[0] > max) {
+                idx = i;
+                max = x[0];
+            }
+        }
+
+        return idx;
+    }
+
 
     public static String mat_to_string(Mat mat) {
         StringBuilder s = new StringBuilder();
