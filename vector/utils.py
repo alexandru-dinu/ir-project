@@ -22,7 +22,7 @@ def morph_open(img, num_iter=1):
     return img
 
 
-def get_center_points_and_weights(w, h, num=6, bottom_to_top=False):
+def get_guidance_points_and_weights(w, h, num=6, bottom_to_top=False):
     m = w // 2
     p = 0.3
     spacing = (0.9 - p) * h / (num - 1)
@@ -61,7 +61,7 @@ def get_point_on_lane(row, point):
     if rl < rr:
         return int(0.5 * (rl + rr))
 
-    return 0, 0  # TODO
+    return 0, 0
 
 
 def compute_speed_delta(diffs, weights, div_factor=8):
@@ -73,12 +73,18 @@ def compute_speed_delta(diffs, weights, div_factor=8):
     return s
 
 
-def region_of_interest(img):
+def get_region_of_interest(img, sx=0.23, sy=0.15, delta=200, return_vertices=False):
+    """
+    :param img: image to extract ROI from
+    :param sx: X-axis factor for ROI bottom base
+    :param sy: Y-axis factor for ROI top base
+    :param delta: ROI top base length
+    :param return_vertices: whether to return the ROI vertices
+    :return: ROI (optional: vertices)
+    """
     assert len(img.shape) == 2
 
     h, w = img.shape
-    sx, sy = 0.23, 0.15
-    delta = 200
 
     mask = np.zeros(img.shape)
     fill_color = 255
@@ -92,22 +98,18 @@ def region_of_interest(img):
 
     cv2.fillPoly(mask, np.array([vertices], dtype=np.int32), fill_color)
 
-    return mask.astype(np.uint8) & img.astype(np.uint8)  # cv2.bitwise_and(mask, img)
+    roi = mask.astype(np.uint8) & img.astype(np.uint8)
 
-# def get_middle_lane(mask):
-#     h, w = mask.shape
-#     lane_mask = np.zeros_like(mask)
-#
-#     for i in range(50, h):
-#         left = 0
-#         right = w
-#         for j in range(1, w):
-#             if mask[i, j - 1] == 0 and mask[i, j] == 255:
-#                 left = j
-#             if mask[i, j - 1] == 255 and mask[i, j] == 0:
-#                 right = j
-#
-#         middle = int((left + right) / 2)
-#         lane_mask[i, middle] = lane_mask[i, middle - 1] = lane_mask[i, middle + 1] = 255
-#
-#     return lane_mask
+    if return_vertices:
+        return roi, vertices
+    else:
+        return roi
+
+
+def draw_roi(img, roi_vertices) -> None:
+    n = len(roi_vertices)
+
+    for i in range(n):
+        p1 = tuple(roi_vertices[i % n])
+        p2 = tuple(roi_vertices[(i + 1) % n])
+        cv2.line(img, p1, p2, color=(0, 255, 0), thickness=1)

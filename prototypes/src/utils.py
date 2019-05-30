@@ -25,6 +25,7 @@ def show(arr, from_bgr=False, cmap=None):
 
     plt.show()
 
+
 def save_img(arr, name, from_bgr=False):
     if from_bgr:
         b = arr[:, :, 0]
@@ -33,3 +34,23 @@ def save_img(arr, name, from_bgr=False):
         arr = np.dstack((r, g, b))
 
     scipy.misc.imsave(name, arr)
+
+
+def morph_close(img, num_iter=1):
+    strel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+
+    for _ in range(num_iter):
+        img = cv2.dilate(img, strel, iterations=1)
+        img = cv2.erode(img, strel, iterations=1)
+
+    return img
+
+
+def morph_open(img, num_iter=1):
+    strel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+
+    for _ in range(num_iter):
+        img = cv2.erode(img, strel, iterations=1)
+        img = cv2.dilate(img, strel, iterations=1)
+
+    return img

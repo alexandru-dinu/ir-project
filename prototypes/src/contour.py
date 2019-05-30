@@ -1,8 +1,9 @@
 import argparse
-from utils import *
-from scipy.interpolate import splprep, splev
-import time
 import warnings
+
+from scipy.interpolate import splev, splprep
+
+from utils import *
 
 warnings.filterwarnings("ignore")
 
@@ -19,25 +20,6 @@ def save_or_show(img, suffix=""):
         save_img(img, name=f'../out/out-{name}{suffix}.png', from_bgr=True)
     else:
         show(img, from_bgr=True)
-
-
-def morph_close(img, num_iter=1):
-    strel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-
-    for _ in range(num_iter):
-        img = cv2.dilate(img, strel, iterations=1)
-        img = cv2.erode(img, strel, iterations=1)
-
-    return img
-
-def morph_open(img, num_iter=1):
-    strel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-
-    for _ in range(num_iter):
-        img = cv2.erode(img, strel, iterations=1)
-        img = cv2.dilate(img, strel, iterations=1)
-
-    return img
 
 
 def smooth_contour(cnt, num=25):
@@ -175,14 +157,14 @@ def on_video():
 
 
 def with_hough(img, edges):
-    lines = cv2.HoughLines(edges, rho=1, theta=np.pi/180.0, threshold=70)
+    lines = cv2.HoughLines(edges, rho=1, theta=np.pi / 180.0, threshold=70)
 
     thr = 30.0
 
     for i, line in enumerate(lines):
         rho, theta = line[0]
 
-        if (thr/180) * np.pi < theta < ((180.0-thr)/180) * np.pi:
+        if (thr / 180) * np.pi < theta < ((180.0 - thr) / 180) * np.pi:
             print(f"[{i}]SKIP theta: {theta * 180.0 / np.pi}")
             continue
 
@@ -190,14 +172,14 @@ def with_hough(img, edges):
 
         a = np.cos(theta)
         b = np.sin(theta)
-        x0 = a*rho
-        y0 = b*rho
-        x1 = int(x0 + 1000*(-b))
-        y1 = int(y0 + 1000*(a))
-        x2 = int(x0 - 1000*(-b))
-        y2 = int(y0 - 1000*(a))
+        x0 = a * rho
+        y0 = b * rho
+        x1 = int(x0 + 1000 * (-b))
+        y1 = int(y0 + 1000 * (a))
+        x2 = int(x0 - 1000 * (-b))
+        y2 = int(y0 - 1000 * (a))
 
-        cv2.line(img, (x1,y1), (x2,y2), (0,255,0), 2)
+        cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
     save_or_show(img, suffix='-hough')
 

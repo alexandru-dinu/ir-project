@@ -1,31 +1,6 @@
-import argparse
-from utils import *
-from scipy.interpolate import splprep, splev
-import time
-import warnings
-import cv2
-import numpy as np
 import sys
 
-
-def morph_close(img, num_iter=1):
-    strel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-
-    for _ in range(num_iter):
-        img = cv2.dilate(img, strel, iterations=1)
-        img = cv2.erode(img, strel, iterations=1)
-
-    return img
-
-
-def morph_open(img, num_iter=1):
-    strel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-
-    for _ in range(num_iter):
-        img = cv2.erode(img, strel, iterations=1)
-        img = cv2.dilate(img, strel, iterations=1)
-
-    return img
+from utils import *
 
 
 def region_of_interest(img):
@@ -35,29 +10,28 @@ def region_of_interest(img):
     Only keeps the region of the image defined by the polygon
     formed from `vertices`. The rest of the image is set to black.
     """
-    #defining a blank mask to start with
+    # defining a blank mask to start with
 
     vertices = np.array([[160, 50], [320, 50], [479, 639], [0, 639]],
-                        dtype=np.int32)
+        dtype=np.int32)
 
     mask = np.zeros_like(img)
 
-    #defining a 3 channel or 1 channel color to fill the mask with depending on the input image
+    # defining a 3 channel or 1 channel color to fill the mask with depending on the input image
     if len(img.shape) > 2:
         channel_count = img.shape[2]  # i.e. 3 or 4 depending on your image
-        ignore_mask_color = (255, ) * channel_count
+        ignore_mask_color = (255,) * channel_count
     else:
         ignore_mask_color = 255
 
-    #filling pixels inside the polygon defined by "vertices" with the fill color
+    # filling pixels inside the polygon defined by "vertices" with the fill color
     cv2.fillPoly(mask, [vertices], ignore_mask_color)
-    #returning the image only where mask pixels are nonzero
+    # returning the image only where mask pixels are nonzero
     masked_image = cv2.bitwise_or(img, ~mask)
     return masked_image, mask
 
 
 def resize_image(img, height=640, width=480):
-
     if len(img.shape) > 2:
         h, w, _ = img.shape
     else:
@@ -72,7 +46,6 @@ def resize_image(img, height=640, width=480):
 
 
 def get_lane_mask(img):
-
     mask = np.copy(img)
 
     h, w = mask.shape
@@ -110,7 +83,6 @@ def get_lane_mask(img):
 
 
 def get_middle_lane(mask):
-
     h, w = mask.shape
     lane_mask = np.zeros_like(mask)
 
@@ -131,7 +103,6 @@ def get_middle_lane(mask):
 
 
 def main(image_name):
-
     img = open_img(image_name, False)
     h, w, _ = img.shape
 
@@ -148,7 +119,7 @@ def main(image_name):
     cv2.imshow("Image0", mask)
     mask = morph_open(mask, 3)
 
-    masked_roi, m = region_of_interest(mask)
+    masked_roi, m = get_region_of_interest(mask)
     masked_roi = ~masked_roi
 
     # get the middle line
@@ -162,7 +133,7 @@ def main(image_name):
 
     color_img[middle_lane_mask != 0] = [255, 0, 0]
 
-    #cv2.line(color_img, first_point, end_point, (255, 0, 0), 2)
+    # cv2.line(color_img, first_point, end_point, (255, 0, 0), 2)
 
     cv2.imshow("Image1", mask)
     cv2.imshow("Image2", masked_roi)

@@ -6,16 +6,16 @@ from anki_vector import events
 
 from utils import *
 
-frame_count = 0
+FRAME_COUNT = 0
 
 # mm per second
 INITIAL_SPEED_L, INITIAL_SPEED_R = 30, 30
 
 
 def on_new_raw_camera_image(robot, event_type, event, done):
-    global frame_count
+    global FRAME_COUNT
 
-    print(f"FRAME COUNT {frame_count}")
+    print(f"FRAME COUNT {FRAME_COUNT}")
 
     raw_img = np.array(event.image)
 
@@ -36,10 +36,11 @@ def on_new_raw_camera_image(robot, event_type, event, done):
     mask = morph_close(mask, num_iter=5)
 
     # 3. get region of interest
-    roi_masked_image = region_of_interest(mask)
+    roi_masked_image, roi_vertices = get_region_of_interest(mask, sx=0.23, sy=0.15, delta=200, return_vertices=True)
+    draw_roi(rgb_img, roi_vertices)
 
-    # 4. draw middle guidance points
-    spacing, center_points, weights = get_center_points_and_weights(w, h, num=6, bottom_to_top=True)
+    # 4. get and draw middle guidance points
+    spacing, center_points, weights = get_guidance_points_and_weights(w, h, num=6, bottom_to_top=True)
     for p in center_points:
         cv2.circle(rgb_img, tuple(p), 5, (0, 0, 255), -1)
 
@@ -72,7 +73,7 @@ def on_new_raw_camera_image(robot, event_type, event, done):
     print("DIFFS", diffs, "SPEED_DELTA:", speed_delta)
 
     # wait 100 frames before moving the robot
-    if frame_count >= 100:
+    if FRAME_COUNT >= 100:
         robot.motors.set_wheel_motors(INITIAL_SPEED_L + speed_delta, INITIAL_SPEED_R - speed_delta)
 
     # show stream
@@ -80,8 +81,8 @@ def on_new_raw_camera_image(robot, event_type, event, done):
     cv2.imshow("stream", rgb_img)
     cv2.waitKey(1)
 
-    frame_count += 1
-    if frame_count == 5000:
+    FRAME_COUNT += 1
+    if FRAME_COUNT == 5000:
         done.set()
 
 
