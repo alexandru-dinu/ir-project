@@ -9,13 +9,25 @@ from utils import *
 FRAME_COUNT = 0
 
 # mm per second
-INITIAL_SPEED_L, INITIAL_SPEED_R = 30, 30
+INITIAL_SPEED = 25
+
+WINDOW_SIZE = 10
+WINDOW = [0] * WINDOW_SIZE
+
+
+def window_add(x):
+    global WINDOW
+
+    if len(WINDOW) == WINDOW_SIZE:
+        WINDOW.pop(0)
+
+    WINDOW.append(x)
 
 
 def on_new_raw_camera_image(robot, event_type, event, done):
-    global FRAME_COUNT
+    global FRAME_COUNT, WINDOW
 
-    print(f"FRAME COUNT {FRAME_COUNT}")
+    print(f">>> frame {FRAME_COUNT}")
 
     raw_img = np.array(event.image)
 
@@ -36,11 +48,11 @@ def on_new_raw_camera_image(robot, event_type, event, done):
     mask = morph_close(mask, num_iter=5)
 
     # 3. get region of interest
-    roi_masked_image, roi_vertices = get_region_of_interest(mask, sx=0.23, sy=0.15, delta=200, return_vertices=True)
-    draw_roi(rgb_img, roi_vertices)
+    roi_masked_image, roi_vertices = get_region_of_interest(mask, sx=0.2, sy=0.1, delta=280, return_vertices=True)
+    # draw_roi(rgb_img, roi_vertices) # TODO
 
     # 4. get and draw middle guidance points
-    spacing, center_points, weights = get_guidance_points_and_weights(w, h, num=6, bottom_to_top=True)
+    spacing, center_points, weights = get_guidance_points_and_weights(w, h, num=10, bottom_to_top=True)
     for p in center_points:
         cv2.circle(rgb_img, tuple(p), 5, (0, 0, 255), -1)
 
@@ -69,12 +81,28 @@ def on_new_raw_camera_image(robot, event_type, event, done):
         cv2.circle(rgb_img, (mid, ctr_y), 5, (255, 0, 0), -1)
 
     # 6. compute speed factor based on X-difference
-    speed_delta = compute_speed_delta(diffs, weights, div_factor=8)
-    print("DIFFS", diffs, "SPEED_DELTA:", speed_delta)
+    speed_delta = compute_speed_delta(diffs, weights, div_factor=6)
+    speed_delta = max(-15, min(speed_delta, 15))
+
+    # 6.0 no average
+    ds = speed_delta
+
+    # 6.1 exponential decay average
+    # ds = np.average(WINDOW + [speed_delta], weights=softmax(np.exp(-0.98 * np.arange(WINDOW_SIZE, -1, -1))))
+    # window_add(ds)
+
+    # 6.2 simple average
+    # ds = int(np.mean(WINDOW + [speed_delta]))
+    # window_add(ds)
+
+    print(f"diffs: {diffs}\ndelta: {ds}\nwindow: {WINDOW}\n")
 
     # wait 100 frames before moving the robot
     if FRAME_COUNT >= 100:
-        robot.motors.set_wheel_motors(INITIAL_SPEED_L + speed_delta, INITIAL_SPEED_R - speed_delta)
+        robot.motors.set_wheel_motors(INITIAL_SPEED + int(np.round(ds)), INITIAL_SPEED - int(np.round(ds)))
+
+    cv2.imwrite('test/seg-%d.jpg' % FRAME_COUNT, roi_masked_image)
+    cv2.imwrite('test/rgb-%d.jpg' % FRAME_COUNT, rgb_img)
 
     # show stream
     cv2.imshow("roi", roi_masked_image)

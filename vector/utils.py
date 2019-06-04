@@ -22,13 +22,15 @@ def morph_open(img, num_iter=1):
     return img
 
 
-def get_guidance_points_and_weights(w, h, num=6, bottom_to_top=False):
+def get_guidance_points_and_weights(w, h, num, bottom_to_top=False):
     m = w // 2
-    p = 0.3
+    p = 0.35
     spacing = (0.9 - p) * h / (num - 1)
 
     # top -> bottom
-    weights = np.array([0.3, 0.3, 0.2, 0.2, 0.1, 0.1])
+    # TODO: may use f(x) = a*exp(-(x-b)^2 / (2c^2)) or a 3rd / 4th order polynomial
+    weights = np.array([0.2, 0.25, 0.3, 0.4, 0.3, 0.25, 0.2, 0.2, 0.1, 0.1])
+    assert num == len(weights)
 
     points = np.concatenate((
         np.array([[m, int(p * h + i * spacing)] for i in range(num - 1)]),
@@ -64,7 +66,7 @@ def get_point_on_lane(row, point):
     return 0, 0
 
 
-def compute_speed_delta(diffs, weights, div_factor=8):
+def compute_speed_delta(diffs, weights, div_factor=8, last_diffs=None):
     x = np.sum(diffs * weights)
 
     s = np.round(x / div_factor)
@@ -113,3 +115,7 @@ def draw_roi(img, roi_vertices) -> None:
         p1 = tuple(roi_vertices[i % n])
         p2 = tuple(roi_vertices[(i + 1) % n])
         cv2.line(img, p1, p2, color=(0, 255, 0), thickness=1)
+
+
+def softmax(x):
+    return np.exp(x) / np.sum(np.exp(x))
