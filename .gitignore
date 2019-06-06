@@ -1,7 +1,7 @@
 .idea/
 .vscode/
 
-vector/imgs
+vector/frames
 vector/model.pt
 
 *.mp4

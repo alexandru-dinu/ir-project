@@ -176,7 +176,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-
         // TODO: USE HSL color space
         // TODO: use separate thread for processing
 
@@ -189,40 +188,79 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         // get input image as RGB
         Imgproc.cvtColor(this.output_image, this.output_image, Imgproc.COLOR_RGBA2RGB);
-        // output_image shape = 1056(w) x 704(h)
 
-        // 1. white thresholding
+        // thresholding for white
         Mat mask = new Mat(this.output_image.size(), CvType.CV_8UC1);
-        Core.inRange(this.output_image, new Scalar(150, 150, 150), new Scalar(255, 255, 255), mask);
 
-        // 2. remove noise
+        if (mode == "hsv") {
+            Imgproc.cvtColor(this.output_image, this.output_image, Imgproc.COLOR_RGB2HSV);
+            Core.inRange(this.output_image, new Scalar(0, 0, 200), new Scalar(360, 10, 255), mask);
+        }
+        if (mode == "rgb") {
+            Core.inRange(this.output_image, new Scalar(150, 150, 150), new Scalar(255, 255, 255), mask);
+        }
+        if (mode == "gray") {
+            Mat matGray = new Mat(this.output_image.size(), CvType.CV_8UC1);
+            Imgproc.cvtColor(this.output_image, matGray, Imgproc.COLOR_RGB2GRAY);
+            Core.inRange(matGray, new Scalar(200), new Scalar(255), mask);
+            matGray.release();
+        }
+
+        // Canny
         Imgproc.GaussianBlur(mask, mask, new Size(5, 5), 2);
-        // Utils.morph_close(mask, 3); TODO
-        Utils.morph_open(mask, 3);
+        Utils.morph_close(mask, 2);
 
-        // 3. get masked roi
-        Pair<Mat, List<Point>> _x = Utils.region_of_interest(mask);
-        Mat masked_roi = _x.first;
-        List<Point> roi_vertices = _x.second;
+        Mat matEdgeBin = new Mat(mask.size(), CvType.CV_8UC1);
+        Imgproc.Canny(mask, matEdgeBin, 140, 160);
 
-        // 4. get middle lane
-        Segmentation.draw_middle_lane(masked_roi, roi_vertices, this.output_image);
+        mask.release();
 
-//        // color_mask[masked_roi != 0] = [0, 255, 0]
-//        Mat color_mask = new Mat(this.output_image.rows(), this.output_image.cols(), this.output_image.type(), new Scalar(0, 0, 0));
-//        for (int i = 0; i < masked_roi.rows(); i++) {
-//            for (int j = 0; j < masked_roi.cols(); j++) {
-//                double[] data = masked_roi.get(i, j);
-//
-//                if ((int) Math.round(data[0]) != 0)
-//                    color_mask.put(i, j, new double[]{0, 255, 0});
-//            }
-//        }
-//
-//        Core.addWeighted(color_mask, 0.3, this.output_image, 0.7, 0, this.output_image);
-//
-//        return masked_roi;
-        return this.output_image;
+        Utils.morph_close(matEdgeBin, 1);
+//        Core.divide(matEdgeBin, new Scalar(255.0), matEdgeBin);
+
+        // HOUGH
+        Mat matLines = new Mat(this.output_image.size(), CvType.CV_8UC1);
+
+        Imgproc.HoughLines(matEdgeBin, matLines, 4, Math.PI / 180.0, 250);
+
+        int d = 30;
+        double f = 0.3;
+
+        for (int i = 0; i < matLines.rows(); i++) {
+            double[] data = matLines.get(i, 0);
+
+            if (data == null || data.length < 2)
+                continue;
+
+            double rho1 = data[0];
+            double theta1 = data[1]; // 0 -> pi
+            double thetaDeg = 180.0 * theta1 / Math.PI; // 0 -> 180
+            double cosTheta = Math.cos(theta1);
+            double sinTheta = Math.sin(theta1);
+            double x0 = cosTheta * rho1;
+            double y0 = sinTheta * rho1;
+
+            // angle thresholding
+            if (d < thetaDeg && thetaDeg < (180 - d))
+                continue;
+
+            // position thresholding
+            if (x0 < f * width || x0 > (1 - f) * width)
+                continue;
+
+//            Log.i("HOUGH theta(deg)", "lineIdx[" + i + "] theta:" + thetaDeg);
+
+            Point pt1 = new Point(x0 + 1000 * (-sinTheta), y0 + 1000 * cosTheta);
+            Point pt2 = new Point(x0 - 1000 * (-sinTheta), y0 - 1000 * cosTheta);
+
+            if (x0 < 0.5 * width)
+                windowedAdd(this.leftLines, new Pair<>(pt1, pt2));
+            else
+                windowedAdd(this.rightLines, new Pair<>(pt1, pt2));
+        }
+
+//        return matEdgeBin;
+        return drawLines();
     }
 }
 
