@@ -32,10 +32,12 @@ def get_guidance_points_and_weights(w, h, num, bottom_to_top=False):
     weights = np.array([0.2, 0.25, 0.3, 0.4, 0.3, 0.25, 0.2, 0.2, 0.1, 0.1])
     assert num == len(weights)
 
-    points = np.concatenate((
-        np.array([[m, int(p * h + i * spacing)] for i in range(num - 1)]),
-        [[m, int(0.9 * h)]]
-    )).astype(np.int32)
+    points = np.concatenate(
+        (
+            np.array([[m, int(p * h + i * spacing)] for i in range(num - 1)]),
+            [[m, int(0.9 * h)]],
+        )
+    ).astype(np.int32)
 
     if bottom_to_top:
         weights = weights[::-1]
@@ -91,12 +93,14 @@ def get_region_of_interest(img, sx=0.23, sy=0.15, delta=200, return_vertices=Fal
     mask = np.zeros(img.shape)
     fill_color = 255
 
-    vertices = np.array([
-        [0.5 * (w - delta), sy * h],
-        [0.5 * (w + delta), sy * h],
-        [(1 - sx) * w, h - 1],
-        [sx * w, h - 1],
-    ])
+    vertices = np.array(
+        [
+            [0.5 * (w - delta), sy * h],
+            [0.5 * (w + delta), sy * h],
+            [(1 - sx) * w, h - 1],
+            [sx * w, h - 1],
+        ]
+    )
 
     cv2.fillPoly(mask, np.array([vertices], dtype=np.int32), fill_color)
 

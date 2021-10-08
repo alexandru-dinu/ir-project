@@ -12,8 +12,7 @@ def region_of_interest(img):
     """
     # defining a blank mask to start with
 
-    vertices = np.array([[160, 50], [320, 50], [479, 639], [0, 639]],
-        dtype=np.int32)
+    vertices = np.array([[160, 50], [320, 50], [479, 639], [0, 639]], dtype=np.int32)
 
     mask = np.zeros_like(img)
 
@@ -96,8 +95,7 @@ def get_middle_lane(mask):
                 right = j
 
         middle = int((left + right) / 2)
-        lane_mask[i, middle] = lane_mask[i, middle - 1] = lane_mask[i, middle +
-                                                                    1] = 255
+        lane_mask[i, middle] = lane_mask[i, middle - 1] = lane_mask[i, middle + 1] = 255
 
     return lane_mask
 
@@ -111,9 +109,8 @@ def main(image_name):
 
     # filter after white color
     mask = cv2.inRange(
-        img,
-        lowerb=np.array([100, 100, 150]),
-        upperb=np.array([255, 255, 255]))
+        img, lowerb=np.array([100, 100, 150]), upperb=np.array([255, 255, 255])
+    )
 
     # remove noise
     cv2.imshow("Image0", mask)
@@ -142,6 +139,6 @@ def main(image_name):
     cv2.destroyAllWindows()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     image_name = sys.argv[1]
     main(image_name)

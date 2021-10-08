@@ -8,16 +8,16 @@ from utils import *
 warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--file', type=str)
-parser.add_argument('--interp', type=int, default=20)
-parser.add_argument('--save', action='store_true')
+parser.add_argument("--file", type=str)
+parser.add_argument("--interp", type=int, default=20)
+parser.add_argument("--save", action="store_true")
 args = parser.parse_args()
 
 
 def save_or_show(img, suffix=""):
     if args.save:
-        name = args.file.split('/')[-1].split('.')[0]
-        save_img(img, name=f'../out/out-{name}{suffix}.png', from_bgr=True)
+        name = args.file.split("/")[-1].split(".")[0]
+        save_img(img, name=f"../out/out-{name}{suffix}.png", from_bgr=True)
     else:
         show(img, from_bgr=True)
 
@@ -125,7 +125,9 @@ def on_video():
         img = cv2.resize(img, (int(h / sf), int(w / sf)))
 
         # hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(img, lowerb=np.array([150, 150, 150]), upperb=np.array([255, 255, 255]))
+        mask = cv2.inRange(
+            img, lowerb=np.array([150, 150, 150]), upperb=np.array([255, 255, 255])
+        )
         # show(mask)
 
         mask = cv2.GaussianBlur(mask, ksize=(5, 5), sigmaX=2)
@@ -139,7 +141,7 @@ def on_video():
         for (x, y) in ps:
             cv2.circle(img, (y, x), 1, (0, 255, 0), thickness=-1)
 
-        cv2.imshow('out', img)
+        cv2.imshow("out", img)
         cv2.waitKey(1)
         continue
 
@@ -181,7 +183,7 @@ def with_hough(img, edges):
 
         cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-    save_or_show(img, suffix='-hough')
+    save_or_show(img, suffix="-hough")
 
 
 def on_image(img=None):
@@ -192,7 +194,9 @@ def on_image(img=None):
     img = cv2.resize(img, (int(h / sf), int(w / sf)))
 
     # hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(img, lowerb=np.array([150, 150, 150]), upperb=np.array([255, 255, 255]))
+    mask = cv2.inRange(
+        img, lowerb=np.array([150, 150, 150]), upperb=np.array([255, 255, 255])
+    )
     # show(mask)
 
     mask = cv2.GaussianBlur(mask, ksize=(5, 5), sigmaX=2)
@@ -217,11 +221,11 @@ def on_image(img=None):
 
 
 def main():
-    if 'jpg' in args.file:
+    if "jpg" in args.file:
         on_image()
-    elif 'mp4' in args.file:
+    elif "mp4" in args.file:
         on_video()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

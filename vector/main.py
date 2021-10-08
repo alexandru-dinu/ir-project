@@ -48,11 +48,15 @@ def on_new_raw_camera_image(robot, event_type, event, done):
     mask = morph_close(mask, num_iter=5)
 
     # 3. get region of interest
-    roi_masked_image, roi_vertices = get_region_of_interest(mask, sx=0.2, sy=0.1, delta=280, return_vertices=True)
+    roi_masked_image, roi_vertices = get_region_of_interest(
+        mask, sx=0.2, sy=0.1, delta=280, return_vertices=True
+    )
     # draw_roi(rgb_img, roi_vertices) # TODO
 
     # 4. get and draw middle guidance points
-    spacing, center_points, weights = get_guidance_points_and_weights(w, h, num=10, bottom_to_top=True)
+    spacing, center_points, weights = get_guidance_points_and_weights(
+        w, h, num=10, bottom_to_top=True
+    )
     for p in center_points:
         cv2.circle(rgb_img, tuple(p), 5, (0, 0, 255), -1)
 
@@ -99,10 +103,12 @@ def on_new_raw_camera_image(robot, event_type, event, done):
 
     # wait 100 frames before moving the robot
     if FRAME_COUNT >= 100:
-        robot.motors.set_wheel_motors(INITIAL_SPEED + int(np.round(ds)), INITIAL_SPEED - int(np.round(ds)))
+        robot.motors.set_wheel_motors(
+            INITIAL_SPEED + int(np.round(ds)), INITIAL_SPEED - int(np.round(ds))
+        )
 
-    cv2.imwrite('test/seg-%d.jpg' % FRAME_COUNT, roi_masked_image)
-    cv2.imwrite('test/rgb-%d.jpg' % FRAME_COUNT, rgb_img)
+    cv2.imwrite("test/seg-%d.jpg" % FRAME_COUNT, roi_masked_image)
+    cv2.imwrite("test/rgb-%d.jpg" % FRAME_COUNT, rgb_img)
 
     # show stream
     cv2.imshow("roi", roi_masked_image)
@@ -127,7 +133,9 @@ def main():
             robot.motors.set_head_motor(-5)
 
             done = threading.Event()
-            robot.events.subscribe(on_new_raw_camera_image, events.Events.new_raw_camera_image, done)
+            robot.events.subscribe(
+                on_new_raw_camera_image, events.Events.new_raw_camera_image, done
+            )
 
             print("> waiting for imgs, press CTRL+C to exit early")
 
@@ -136,8 +144,10 @@ def main():
             except KeyboardInterrupt:
                 pass
 
-        robot.events.unsubscribe(on_new_raw_camera_image, events.Events.new_raw_camera_image)
+        robot.events.unsubscribe(
+            on_new_raw_camera_image, events.Events.new_raw_camera_image
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
